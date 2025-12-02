@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { pool } from "./db.js"; // dein Pool aus der Datei oben
+import { pool } from "./db.js";
 
 dotenv.config();
 
@@ -45,6 +45,27 @@ app.delete("/tasks/:id", async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Task nicht gefunden" });
     }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/tasks/:id", async (req, res) => {
+  const { id } = req.params;
+  const { title, description } = req.body;
+
+  try {
+    const result = await pool.query(
+      "UPDATE tasks SET title = $1, description = $2 WHERE id = $3 RETURNING *",
+      [title, description, id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Task nicht gefunden" });
+    }
+
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
