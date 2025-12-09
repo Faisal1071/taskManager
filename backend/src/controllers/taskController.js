@@ -11,8 +11,8 @@ export const getTasks = async (req, res) => {
 
 export const addTask = async (req, res) => {
   try {
-    const { title, description } = req.body;
-    const task = await taskService.createTask(title, description);
+    const { title, description, deadline } = req.body;
+    const task = await taskService.createTask(title, description, deadline);
     res.json(task);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -31,11 +31,13 @@ export const removeTask = async (req, res) => {
 
 export const editTask = async (req, res) => {
   try {
-    const { title, description } = req.body;
+    const { title, description, deadline } = req.body;
+
     const task = await taskService.updateTask(
       req.params.id,
       title,
-      description
+      description,
+      deadline
     );
 
     if (!task) return res.status(404).json({ error: "Task nicht gefunden" });
