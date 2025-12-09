@@ -4,26 +4,38 @@ export const getAllTasks = async () => {
   const result = await pool.query("SELECT * FROM tasks ORDER BY id DESC");
   return result.rows;
 };
-export const createTask = async (title, description, deadline) => {
+
+/**
+ * Get all tasks for a specific user
+ */
+export const getUserTasks = async (userId) => {
   const result = await pool.query(
-    "INSERT INTO tasks (title, description, deadline) VALUES ($1, $2, $3) RETURNING *",
-    [title, description, deadline]
+    "SELECT * FROM tasks WHERE user_id = $1 ORDER BY created_at DESC",
+    [userId]
+  );
+  return result.rows;
+};
+
+export const createTask = async (title, description, deadline, userId) => {
+  const result = await pool.query(
+    "INSERT INTO tasks (title, description, user_id) VALUES ($1, $2, $3) RETURNING *",
+    [title, description, userId]
   );
   return result.rows[0];
 };
 
-export const deleteTask = async (id) => {
+export const deleteTask = async (id, userId) => {
   const result = await pool.query(
-    "DELETE FROM tasks WHERE id = $1 RETURNING *",
-    [id]
+    "DELETE FROM tasks WHERE id = $1 AND user_id = $2 RETURNING *",
+    [id, userId]
   );
   return result.rows[0];
 };
 
-export const updateTask = async (id, title, description, deadline) => {
+export const updateTask = async (id, title, description, deadline, userId) => {
   const result = await pool.query(
-    "UPDATE tasks SET title = $1, description = $2, deadline = $3 WHERE id = $4 RETURNING *",
-    [title, description, deadline, id]
+    "UPDATE tasks SET title = $1, description = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 AND user_id = $4 RETURNING *",
+    [title, description, id, userId]
   );
   return result.rows[0];
 };
