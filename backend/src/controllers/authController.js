@@ -2,7 +2,6 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import CryptoJS from "crypto-js";
 import { pool } from "../db.js";
-import { getDb, isUsingRealDb } from "../database.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
 const ENCRYPTION_KEY = "task-manager-secret-key-2024";
@@ -45,13 +44,13 @@ export const signup = async (req, res) => {
     // Decrypt password from frontend
     const decryptedPassword = decryptPassword(password);
 
-    const db = getDb();
-
     // Check if user already exists
-    const existingUserByEmail = await db.findUserByEmail(email);
-    const existingUserByUsername = await db.findUserByUsername(username);
+    const existingUser = await pool.query(
+      "SELECT * FROM users WHERE email = $1 OR username = $2",
+      [email, username]
+    );
 
-    if (existingUserByEmail || existingUserByUsername) {
+    if (existingUser.rows.length > 0) {
       return res.status(409).json({ message: "User already exists" });
     }
 
@@ -59,7 +58,12 @@ export const signup = async (req, res) => {
     const hashedPassword = await bcrypt.hash(decryptedPassword, 10);
 
     // Create user
-    const user = await db.createUser(username, email, hashedPassword);
+    const result = await pool.query(
+      "INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING id, username, email",
+      [username, email, hashedPassword]
+    );
+
+    const user = result.rows[0];
     const token = generateToken(user.id, user.email);
 
     res.status(201).json({
@@ -92,14 +96,17 @@ export const login = async (req, res) => {
     // Decrypt password from frontend
     const decryptedPassword = decryptPassword(password);
 
-    const db = getDb();
-
     // Find user
-    const user = await db.findUserByEmail(email);
+    const result = await pool.query(
+      "SELECT * FROM users WHERE email = $1",
+      [email]
+    );
 
-    if (!user) {
+    if (result.rows.length === 0) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
+
+    const user = result.rows[0];
 
     // Compare passwords
     const passwordMatch = await bcrypt.compare(decryptedPassword, user.password);

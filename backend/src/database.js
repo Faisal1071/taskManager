@@ -1,20 +1,11 @@
 import { pool } from "./db.js";
-import { mockDb } from "./mockDb.js";
-
-let useRealDatabase = true;
 
 /**
  * Initialize database tables
  * Creates users and tasks tables if they don't exist
- * Falls back to mock database if real DB is unavailable
  */
 export const initializeDatabase = async () => {
   try {
-    // Test connection to real database
-    await pool.query("SELECT NOW()");
-    useRealDatabase = true;
-    console.log("✓ Connected to PostgreSQL database");
-
     // Create users table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -46,65 +37,7 @@ export const initializeDatabase = async () => {
 
     console.log("✓ Database tables initialized successfully");
   } catch (error) {
-    console.warn("⚠ PostgreSQL not available, using mock database");
-    console.warn(`  Error: ${error.message}`);
-    useRealDatabase = false;
+    console.error("Error initializing database:", error);
+    throw error;
   }
-};
-
-/**
- * Create a database abstraction wrapper
- * Automatically handles both real DB (pool) and mock DB
- */
-class DatabaseAbstraction {
-  async query(sql, params) {
-    if (useRealDatabase) {
-      return pool.query(sql, params);
-    }
-    throw new Error("Direct query not supported in mock mode");
-  }
-
-  async findUserByEmail(email) {
-    return mockDb.findUserByEmail(email);
-  }
-
-  async findUserByUsername(username) {
-    return mockDb.findUserByUsername(username);
-  }
-
-  async createUser(username, email, password) {
-    return mockDb.createUser(username, email, password);
-  }
-
-  async getUserTasks(userId) {
-    return mockDb.getUserTasks(userId);
-  }
-
-  async createTask(title, description, userId) {
-    return mockDb.createTask(title, description, userId);
-  }
-
-  async updateTask(id, userId, title, description) {
-    return mockDb.updateTask(id, userId, title, description);
-  }
-
-  async deleteTask(id, userId) {
-    return mockDb.deleteTask(id, userId);
-  }
-}
-
-const dbAbstraction = new DatabaseAbstraction();
-
-/**
- * Get database abstraction layer
- */
-export const getDb = () => {
-  return dbAbstraction;
-};
-
-/**
- * Check if using real database
- */
-export const isUsingRealDb = () => {
-  return useRealDatabase;
 };
