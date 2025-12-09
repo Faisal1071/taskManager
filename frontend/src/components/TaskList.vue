@@ -151,7 +151,12 @@ let timerInterval = null;
 watch(points, (newVal) => localStorage.setItem("points", newVal));
 
 async function loadTasks() {
-  tasks.value = await getTasks();
+  try {
+    tasks.value = await getTasks();
+  } catch (error) {
+    console.error("Failed to load tasks:", error);
+    tasks.value = [];
+  }
 }
 
 function calculateDeadline(days, hours, minutes) {
@@ -165,33 +170,43 @@ function calculateDeadline(days, hours, minutes) {
 async function addTask() {
   if (!title.value) return;
 
-  const taskData = {
-    title: title.value,
-    description: description.value,
-  };
+  try {
+    const taskData = {
+      title: title.value,
+      description: description.value,
+    };
 
-  if (timerDays.value || timerHours.value || timerMinutes.value) {
-    taskData.deadline = calculateDeadline(
-      timerDays.value || 0,
-      timerHours.value || 0,
-      timerMinutes.value || 0
-    );
+    if (timerDays.value || timerHours.value || timerMinutes.value) {
+      taskData.deadline = calculateDeadline(
+        timerDays.value || 0,
+        timerHours.value || 0,
+        timerMinutes.value || 0
+      );
+    }
+
+    await createTask(taskData);
+
+    title.value = "";
+    description.value = "";
+    timerDays.value = 0;
+    timerHours.value = 0;
+    timerMinutes.value = 0;
+
+    await loadTasks();
+  } catch (error) {
+    console.error("Failed to add task:", error);
+    alert("Failed to add task: " + error.message);
   }
-
-  await createTask(taskData);
-
-  title.value = "";
-  description.value = "";
-  timerDays.value = 0;
-  timerHours.value = 0;
-  timerMinutes.value = 0;
-
-  await loadTasks();
 }
 
 async function deleteTaskHandler(id) {
-  await deleteTask(id);
-  await loadTasks();
+  try {
+    await deleteTask(id);
+    await loadTasks();
+  } catch (error) {
+    console.error("Failed to delete task:", error);
+    alert("Failed to delete task: " + error.message);
+  }
 }
 
 function startEdit(task) {
@@ -223,45 +238,55 @@ function cancelEdit() {
 }
 
 async function saveEdit() {
-  const taskData = {
-    title: editingTitle.value,
-    description: editingDescription.value,
-  };
+  try {
+    const taskData = {
+      title: editingTitle.value,
+      description: editingDescription.value,
+    };
 
-  if (
-    editingTimerDays.value ||
-    editingTimerHours.value ||
-    editingTimerMinutes.value
-  ) {
-    taskData.deadline = calculateDeadline(
-      editingTimerDays.value || 0,
-      editingTimerHours.value || 0,
-      editingTimerMinutes.value || 0
-    );
+    if (
+      editingTimerDays.value ||
+      editingTimerHours.value ||
+      editingTimerMinutes.value
+    ) {
+      taskData.deadline = calculateDeadline(
+        editingTimerDays.value || 0,
+        editingTimerHours.value || 0,
+        editingTimerMinutes.value || 0
+      );
+    }
+
+    await updateTask(editingId.value, taskData);
+    cancelEdit();
+    await loadTasks();
+  } catch (error) {
+    console.error("Failed to save task:", error);
+    alert("Failed to save task: " + error.message);
   }
-
-  await updateTask(editingId.value, taskData);
-  cancelEdit();
-  await loadTasks();
 }
 
 async function completeTask(task) {
-  await deleteTask(task.id);
+  try {
+    await deleteTask(task.id);
 
-  const messages = [
-    "Du bist ein Held! 🦸‍♂️",
-    "Mission erfüllt! ✅",
-    "Level up! 🎮",
-    "Task besiegt! ⚔️",
-  ];
+    const messages = [
+      "Du bist ein Held! 🦸‍♂️",
+      "Mission erfüllt! ✅",
+      "Level up! 🎮",
+      "Task besiegt! ⚔️",
+    ];
 
-  motivationMessage.value =
-    messages[Math.floor(Math.random() * messages.length)];
-  points.value += 10;
-  showConfetti();
+    motivationMessage.value =
+      messages[Math.floor(Math.random() * messages.length)];
+    points.value += 10;
+    showConfetti();
 
-  tasks.value = tasks.value.filter((t) => t.id !== task.id);
-  setTimeout(() => (motivationMessage.value = ""), 3000);
+    tasks.value = tasks.value.filter((t) => t.id !== task.id);
+    setTimeout(() => (motivationMessage.value = ""), 3000);
+  } catch (error) {
+    console.error("Failed to complete task:", error);
+    alert("Failed to complete task: " + error.message);
+  }
 }
 
 function getTaskClass(task) {
