@@ -9,32 +9,97 @@
         placeholder="Beschreibung"
         class="retro-input"
       />
+
+      <div class="timer-inputs">
+        <input
+          v-model.number="timerDays"
+          type="number"
+          min="0"
+          placeholder="Tage"
+          class="retro-input timer-input"
+        />
+        <input
+          v-model.number="timerHours"
+          type="number"
+          min="0"
+          max="23"
+          placeholder="Stunden"
+          class="retro-input timer-input"
+        />
+        <input
+          v-model.number="timerMinutes"
+          type="number"
+          min="0"
+          max="59"
+          placeholder="Minuten"
+          class="retro-input timer-input"
+        />
+      </div>
+
       <button @click="addTask" class="retro-button">Hinzufügen</button>
     </div>
 
     <ul class="task-list">
-      <li v-for="task in tasks" :key="task.id" class="task-item">
-        <!-- Edit-Modus -->
+      <li
+        v-for="task in tasks"
+        :key="task.id"
+        class="task-item"
+        :class="getTaskClass(task)"
+      >
         <div v-if="editingId === task.id" class="retro-edit">
           <input v-model="editingTitle" class="retro-input" />
           <input v-model="editingDescription" class="retro-input" />
+
+          <div class="timer-inputs">
+            <input
+              v-model.number="editingTimerDays"
+              type="number"
+              min="0"
+              placeholder="Tage"
+              class="retro-input timer-input"
+            />
+            <input
+              v-model.number="editingTimerHours"
+              type="number"
+              min="0"
+              max="23"
+              placeholder="Stunden"
+              class="retro-input timer-input"
+            />
+            <input
+              v-model.number="editingTimerMinutes"
+              type="number"
+              min="0"
+              max="59"
+              placeholder="Minuten"
+              class="retro-input timer-input"
+            />
+          </div>
+
           <button @click="saveEdit" class="retro-button">Speichern</button>
           <button @click="cancelEdit" class="retro-button">Abbrechen</button>
         </div>
 
         <div v-else class="task-display">
-          <span :class="{ done: task.completed }"
-            >{{ task.title }} – {{ task.description }}</span
-          >
-          <button @click="startEdit(task)" class="retro-button">
-            Bearbeiten
-          </button>
-          <button @click="deleteTask(task.id)" class="retro-button">
-            Löschen
-          </button>
-          <button @click="completeTask(task)" class="retro-button complete">
-            Abhaken ✅
-          </button>
+          <div class="task-content">
+            <span :class="{ done: task.completed }">
+              {{ task.title }} – {{ task.description }}
+            </span>
+            <div v-if="task.deadline" class="timer-display">
+              ⏱️ {{ formatTimeRemaining(task) }}
+            </div>
+          </div>
+          <div class="task-actions">
+            <button @click="startEdit(task)" class="retro-button">
+              Bearbeiten
+            </button>
+            <button @click="deleteTaskHandler(task.id)" class="retro-button">
+              Löschen
+            </button>
+            <button @click="completeTask(task)" class="retro-button complete">
+              Abhaken ✅
+            </button>
+          </div>
         </div>
       </li>
     </ul>
@@ -48,43 +113,84 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from "vue";
+import { ref, onMounted, watch, onUnmounted } from "vue";
+import {
+  getTasks,
+  createTask,
+  updateTask,
+  deleteTask,
+} from "/src/services/taskService.js";
+import dayjs from "dayjs";
+import duration from "dayjs/plugin/duration";
+import "dayjs/locale/de";
+
+import "/src/components/Taskmanager.css";
+
+dayjs.extend(duration);
+dayjs.locale("de");
 
 const tasks = ref([]);
 const title = ref("");
 const description = ref("");
+const timerDays = ref(0);
+const timerHours = ref(0);
+const timerMinutes = ref(0);
 
 const editingId = ref(null);
 const editingTitle = ref("");
 const editingDescription = ref("");
+const editingTimerDays = ref(0);
+const editingTimerHours = ref(0);
+const editingTimerMinutes = ref(0);
 
 const motivationMessage = ref("");
 const points = ref(parseInt(localStorage.getItem("points") || "0"));
 
+let timerInterval = null;
+
 watch(points, (newVal) => localStorage.setItem("points", newVal));
 
 async function loadTasks() {
-  const res = await fetch("http://localhost:3000/tasks");
-  tasks.value = await res.json();
+  tasks.value = await getTasks();
+}
+
+function calculateDeadline(days, hours, minutes) {
+  return dayjs()
+    .add(days, "day")
+    .add(hours, "hour")
+    .add(minutes, "minute")
+    .toISOString();
 }
 
 async function addTask() {
   if (!title.value) return;
-  await fetch("http://localhost:3000/tasks", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: title.value,
-      description: description.value,
-    }),
-  });
+
+  const taskData = {
+    title: title.value,
+    description: description.value,
+  };
+
+  if (timerDays.value || timerHours.value || timerMinutes.value) {
+    taskData.deadline = calculateDeadline(
+      timerDays.value || 0,
+      timerHours.value || 0,
+      timerMinutes.value || 0
+    );
+  }
+
+  await createTask(taskData);
+
   title.value = "";
   description.value = "";
+  timerDays.value = 0;
+  timerHours.value = 0;
+  timerMinutes.value = 0;
+
   await loadTasks();
 }
 
-async function deleteTask(id) {
-  await fetch(`http://localhost:3000/tasks/${id}`, { method: "DELETE" });
+async function deleteTaskHandler(id) {
+  await deleteTask(id);
   await loadTasks();
 }
 
@@ -92,193 +198,113 @@ function startEdit(task) {
   editingId.value = task.id;
   editingTitle.value = task.title;
   editingDescription.value = task.description;
+
+  if (task.deadline) {
+    const deadline = dayjs(task.deadline);
+    const diff = deadline.diff(dayjs(), "minute");
+
+    editingTimerDays.value = Math.floor(diff / (24 * 60));
+    editingTimerHours.value = Math.floor((diff % (24 * 60)) / 60);
+    editingTimerMinutes.value = diff % 60;
+  } else {
+    editingTimerDays.value = 0;
+    editingTimerHours.value = 0;
+    editingTimerMinutes.value = 0;
+  }
 }
+
 function cancelEdit() {
   editingId.value = null;
   editingTitle.value = "";
   editingDescription.value = "";
+  editingTimerDays.value = 0;
+  editingTimerHours.value = 0;
+  editingTimerMinutes.value = 0;
 }
+
 async function saveEdit() {
-  await fetch(`http://localhost:3000/tasks/${editingId.value}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: editingTitle.value,
-      description: editingDescription.value,
-    }),
-  });
+  const taskData = {
+    title: editingTitle.value,
+    description: editingDescription.value,
+  };
+
+  if (
+    editingTimerDays.value ||
+    editingTimerHours.value ||
+    editingTimerMinutes.value
+  ) {
+    taskData.deadline = calculateDeadline(
+      editingTimerDays.value || 0,
+      editingTimerHours.value || 0,
+      editingTimerMinutes.value || 0
+    );
+  }
+
+  await updateTask(editingId.value, taskData);
   cancelEdit();
   await loadTasks();
 }
 
 async function completeTask(task) {
-  await fetch(`http://localhost:3000/tasks/${task.id}`, { method: "DELETE" });
+  await deleteTask(task.id);
+
   const messages = [
     "Du bist ein Held! 🦸‍♂️",
     "Mission erfüllt! ✅",
     "Level up! 🎮",
     "Task besiegt! ⚔️",
   ];
+
   motivationMessage.value =
     messages[Math.floor(Math.random() * messages.length)];
   points.value += 10;
   showConfetti();
+
   tasks.value = tasks.value.filter((t) => t.id !== task.id);
   setTimeout(() => (motivationMessage.value = ""), 3000);
+}
+
+function getTaskClass(task) {
+  if (!task.deadline) return "";
+
+  const hoursRemaining = dayjs(task.deadline).diff(dayjs(), "hour", true);
+
+  if (hoursRemaining < 0) return "task-overdue";
+  if (hoursRemaining < 24) return "task-urgent";
+  return "task-safe";
+}
+
+function formatTimeRemaining(task) {
+  if (!task.deadline) return "";
+
+  const deadline = dayjs(task.deadline);
+  const now = dayjs();
+
+  if (deadline.isBefore(now)) return "Überfällig!";
+
+  const diff = dayjs.duration(deadline.diff(now));
+  const days = Math.floor(diff.asDays());
+  const hours = diff.hours();
+  const minutes = diff.minutes();
+
+  if (days > 0) return `${days}T ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }
 
 function showConfetti() {
   console.log("🎉 Confetti!");
 }
 
-onMounted(loadTasks);
+onMounted(() => {
+  loadTasks();
+
+  timerInterval = setInterval(() => {
+    tasks.value = [...tasks.value];
+  }, 60000);
+});
+
+onUnmounted(() => {
+  if (timerInterval) clearInterval(timerInterval);
+});
 </script>
-
-<style scoped>
-.retro-container {
-  font-family: "Courier New", monospace;
-  background: #1a1a1a;
-  color: #e0e0e0;
-  min-height: 100vh;
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  box-sizing: border-box;
-}
-
-.retro-title {
-  text-align: center;
-  font-size: 1.8rem;
-  color: #ffffff;
-  margin-bottom: 2rem;
-  font-weight: 600;
-  letter-spacing: -0.5px;
-}
-
-.retro-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-bottom: 2rem;
-  justify-content: center;
-  width: 100%;
-  max-width: 700px;
-}
-.retro-input {
-  background: #2a2a2a;
-  border: 1px solid #404040;
-  color: #e0e0e0;
-  padding: 0.75rem;
-  font-family: "Courier New", monospace;
-  font-size: 0.95rem;
-  flex: 1 1 200px;
-  min-width: 150px;
-  border-radius: 4px;
-  transition: border-color 0.2s;
-}
-.retro-input:focus {
-  outline: none;
-  border-color: #0088ff;
-}
-.retro-button {
-  background: #0088ff;
-  color: #ffffff;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  font-family: "Courier New", monospace;
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: 0.2s;
-  flex-shrink: 0;
-  border-radius: 4px;
-  font-weight: 500;
-}
-.retro-button:hover {
-  background: #0066cc;
-}
-
-.task-list {
-  list-style: none;
-  padding: 0;
-  width: 100%;
-  max-width: 700px;
-}
-.task-item {
-  margin-bottom: 1rem;
-  padding: 1rem;
-  border: 1px solid #333;
-  background: #252525;
-  border-radius: 6px;
-  display: flex;
-  flex-direction: column;
-}
-.task-display {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-}
-.task-display > span {
-  flex: 1 1 200px;
-  min-width: 150px;
-  line-height: 1.5;
-}
-.done {
-  text-decoration: line-through;
-  color: #666;
-}
-
-.retro-edit {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.retro-motivation {
-  font-size: 1.1rem;
-  color: #4caf50;
-  margin-top: 1.5rem;
-  text-align: center;
-  font-weight: 500;
-}
-.retro-points {
-  margin-top: 1rem;
-  font-weight: 600;
-  color: #0088ff;
-  font-size: 1.1rem;
-}
-
-.complete {
-  background: #4caf50;
-  color: #ffffff;
-}
-.complete:hover {
-  background: #45a049;
-}
-
-@media (max-width: 768px) {
-  .retro-title {
-    font-size: 1.4rem;
-  }
-  .retro-input,
-  .retro-button {
-    flex: 1 1 100%;
-    font-size: 0.9rem;
-  }
-  .task-display {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .task-display > span {
-    flex: 1 1 auto;
-    margin-bottom: 0.5rem;
-  }
-  .retro-button {
-    width: 100%;
-  }
-  .retro-container {
-    padding: 1rem;
-  }
-}
-</style>
